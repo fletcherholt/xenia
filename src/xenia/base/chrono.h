@@ -104,7 +104,8 @@ struct NtSystemClock {
     if constexpr (domain_ == Domain::Host) {
       // QueryHostSystemTime() returns windows epoch times even on POSIX
       return from_file_time(Clock::QueryHostSystemTime());
-    } else if constexpr (domain_ == Domain::Guest) {
+    } else {
+      static_assert(domain_ == Domain::Guest);
       return from_file_time(Clock::QueryGuestSystemTime());
     }
   }

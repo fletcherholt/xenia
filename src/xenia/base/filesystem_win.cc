@@ -206,7 +206,10 @@ std::unique_ptr<FileHandle> FileHandle::OpenExisting(
 #define COMBINE_TIME(t) (((uint64_t)t.dwHighDateTime << 32) | t.dwLowDateTime)
 
 bool GetInfo(const std::filesystem::path& path, FileInfo* out_info) {
-  std::memset(out_info, 0, sizeof(FileInfo));
+  // Reset via assignment rather than memset: FileInfo holds
+  // std::filesystem::path members, and zeroing those non-trivial objects with
+  // memset is undefined.
+  *out_info = FileInfo{};
   WIN32_FILE_ATTRIBUTE_DATA data = {0};
   if (!GetFileAttributesEx(path.c_str(), GetFileExInfoStandard, &data)) {
     return false;

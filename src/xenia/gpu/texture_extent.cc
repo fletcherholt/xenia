@@ -54,8 +54,7 @@ static TextureExtent CalculateExtent(const FormatInfo* format_info,
       extent.pitch = extent.block_pitch_h * format_info->block_width;
     }
 
-    // Is depth special?
-    extent.depth = extent.depth;
+    // Depth is not adjusted for guest tiling; it keeps the value set above.
   } else {
     extent.pitch = extent.block_pitch_h * format_info->block_width;
     extent.height = extent.block_pitch_v * format_info->block_height;
