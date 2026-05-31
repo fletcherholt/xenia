@@ -35,6 +35,7 @@ X_STATUS XAudio2AudioSystem::CreateDriver(size_t index,
   auto driver = new XAudio2AudioDriver(memory_, semaphore);
   if (!driver->Initialize()) {
     driver->Shutdown();
+    delete driver;
     return X_STATUS_UNSUCCESSFUL;
   }
 
