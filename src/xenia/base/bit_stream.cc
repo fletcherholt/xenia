@@ -41,7 +41,16 @@ uint64_t BitStream::Peek(size_t num_bits) {
 
   // offset -->
   // ..[junk]..| target bits |....[junk].............
-  uint64_t bits = *(uint64_t*)(buffer_ + offset_bytes);
+  // The backing buffer only holds ceil(size_bits_ / 8) bytes, so a full 8-byte
+  // load near the end would read past it. Copy only the bytes that exist into a
+  // zero-filled value; the missing trailing bytes become low bits that are
+  // discarded by the shift/mask below anyway.
+  size_t total_bytes = (size_bits_ + 7) >> 3;
+  size_t available_bytes =
+      offset_bytes < total_bytes ? total_bytes - offset_bytes : 0;
+  uint64_t bits = 0;
+  std::memcpy(&bits, buffer_ + offset_bytes,
+              available_bytes >= sizeof(bits) ? sizeof(bits) : available_bytes);
 
   // We need the data in little endian.
   // TODO: Have a flag specifying endianness of data?
@@ -83,7 +92,15 @@ bool BitStream::Write(uint64_t val, size_t num_bits) {
 
   // offset ----->
   // ....[junk]...| target bits w/ junk |....[junk]......
-  uint64_t bits = *(uint64_t*)(buffer_ + offset_bytes);
+  // Only touch the bytes that actually exist in the backing buffer to avoid
+  // reading/writing past its end when near the tail.
+  size_t total_bytes = (size_bits_ + 7) >> 3;
+  size_t available_bytes =
+      offset_bytes < total_bytes ? total_bytes - offset_bytes : 0;
+  size_t access_bytes =
+      available_bytes >= sizeof(uint64_t) ? sizeof(uint64_t) : available_bytes;
+  uint64_t bits = 0;
+  std::memcpy(&bits, buffer_ + offset_bytes, access_bytes);
 
   // AND with mask
   // ....[junk]...| target bits (0) |........[junk]......
@@ -94,7 +111,7 @@ bool BitStream::Write(uint64_t val, size_t num_bits) {
   bits |= val;
 
   // Store into the bitstream.
-  *(uint64_t*)(buffer_ + offset_bytes) = bits;
+  std::memcpy(buffer_ + offset_bytes, &bits, access_bytes);
 
   // Advance the bitstream forward.
   Advance(num_bits);

@@ -105,6 +105,9 @@ size_t SingleLayoutDescriptorSetPool::Allocate() {
       }
       full_pools_.push_back(current_pool_);
       current_pool_ = VK_NULL_HANDLE;
+      // Retry the allocation from a fresh pool on the next iteration rather
+      // than falling through and returning an uninitialized descriptor set.
+      continue;
     }
     --current_pool_sets_remaining_;
     descriptor_sets_.push_back(descriptor_set);

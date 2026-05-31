@@ -34,6 +34,7 @@ X_STATUS SDLAudioSystem::CreateDriver(size_t index,
   auto driver = new SDLAudioDriver(memory_, semaphore);
   if (!driver->Initialize()) {
     driver->Shutdown();
+    delete driver;
     return X_STATUS_UNSUCCESSFUL;
   }
 

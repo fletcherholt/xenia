@@ -348,13 +348,25 @@ int InstrEmit_stvrxl128(PPCHIRBuilder& f, const InstrData& i) {
 }
 
 int InstrEmit_mfvscr(PPCHIRBuilder& f, const InstrData& i) {
-  XEINSTRNOTIMPLEMENTED();
-  return 1;
+  // Source: AltiVec Programming Environments Manual (mfvscr), public IBM/
+  // Freescale documentation; VSCR layout per the same manual.
+  // vD <- 0^96 || VSCR: VSCR is copied into the low-order word (element 3) of
+  // vD and the rest is cleared. Only the SAT bit (bit 0 of that word) is
+  // modeled by Xenia; the NJ bit is not tracked and reads back as 0.
+  Value* sat = f.ZeroExtend(f.LoadSAT(), INT32_TYPE);
+  Value* v = f.Insert(f.LoadZeroVec128(), uint64_t(3), sat);
+  f.StoreVR(i.VX.VD, v);
+  return 0;
 }
 
 int InstrEmit_mtvscr(PPCHIRBuilder& f, const InstrData& i) {
-  XEINSTRNOTIMPLEMENTED();
-  return 1;
+  // Source: AltiVec Programming Environments Manual (mtvscr), public IBM/
+  // Freescale documentation.
+  // VSCR <- (vB)low-order word. Only the SAT bit (bit 0) is modeled; NJ and the
+  // reserved bits are ignored.
+  Value* word = f.Extract(f.LoadVR(i.VX.VB), uint8_t(3), INT32_TYPE);
+  f.StoreSAT(f.And(word, f.LoadConstantUint32(1)));
+  return 0;
 }
 
 int InstrEmit_vaddcuw(PPCHIRBuilder& f, const InstrData& i) {
@@ -1787,8 +1799,38 @@ int InstrEmit_vsum4ubs(PPCHIRBuilder& f, const InstrData& i) {
 }
 
 int InstrEmit_vpkpx(PPCHIRBuilder& f, const InstrData& i) {
-  XEINSTRNOTIMPLEMENTED();
-  return 1;
+  // Source: AltiVec Programming Environments Manual (vpkpx), public IBM/
+  // Freescale documentation. The 1:5:5:5 field positions below are from that
+  // manual's pseudocode.
+  // Vector Pack Pixel: pack the eight source words (VA[0..3] then VB[0..3])
+  // into eight 16-bit 1:5:5:5 pixels. For each 32-bit source word W the pixel
+  // is
+  //   shadow bit  <- W bit 7
+  //   red   (5b)  <- W bits 8:12
+  //   green (5b)  <- W bits 16:20
+  //   blue  (5b)  <- W bits 24:28
+  // which reduces to:
+  //   pixel = ((W >> 9) & 0xFC00) | ((W >> 6) & 0x3E0) | ((W >> 3) & 0x1F)
+  // The masks/shifts are identical per lane, so element order doesn't matter.
+  auto pixelize = [&f](Value* w) {
+    Value* shadow_red =
+        f.And(f.VectorShr(w, f.LoadConstantVec128(vec128i(9)), INT32_TYPE),
+              f.LoadConstantVec128(vec128i(0xFC00)));
+    Value* green =
+        f.And(f.VectorShr(w, f.LoadConstantVec128(vec128i(6)), INT32_TYPE),
+              f.LoadConstantVec128(vec128i(0x3E0)));
+    Value* blue =
+        f.And(f.VectorShr(w, f.LoadConstantVec128(vec128i(3)), INT32_TYPE),
+              f.LoadConstantVec128(vec128i(0x1F)));
+    return f.Or(f.Or(shadow_red, green), blue);
+  };
+  // Each pixel sits in the low 16 bits of its lane; pack those low shorts the
+  // same way vpkuwum does to interleave VA's four pixels with VB's four.
+  Value* v = f.Pack(pixelize(f.LoadVR(i.VX.VA)), pixelize(f.LoadVR(i.VX.VB)),
+                    PACK_TYPE_16_IN_32 | PACK_TYPE_IN_UNSIGNED |
+                        PACK_TYPE_OUT_UNSIGNED | PACK_TYPE_OUT_UNSATURATE);
+  f.StoreVR(i.VX.VD, v);
+  return 0;
 }
 
 int InstrEmit_vpkshss_(PPCHIRBuilder& f, uint32_t vd, uint32_t va,

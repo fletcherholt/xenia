@@ -47,9 +47,12 @@ X_HRESULT XamApp::DispatchMessageSync(uint32_t message, uint32_t buffer_ptr,
       auto extra = memory_->TranslateVirtual<X_KENUMERATOR_CONTENT_AGGREGATE*>(
           data->extra_ptr);
       auto buffer = memory_->TranslateVirtual(data->buffer_ptr);
+      if (!buffer || !extra) {
+        return X_E_INVALIDARG;
+      }
       auto e = kernel_state_->object_table()->LookupObject<XEnumerator>(
           extra->handle);
-      if (!e || !buffer || !extra) {
+      if (!e) {
         return X_E_INVALIDARG;
       }
       assert_true(extra->magic == kXObjSignature);

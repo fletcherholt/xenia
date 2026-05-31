@@ -1065,12 +1065,31 @@ void Value::VectorConvertI2F(Value* other, bool is_unsigned) {
 void Value::VectorConvertF2I(Value* other, bool is_unsigned) {
   assert_true(type == VEC128_TYPE);
 
-  // FIXME(DrChat): This does not saturate!
+  // Must match the saturating behavior of OPCODE_VECTOR_CONVERT_F2I in the x64
+  // backend (vctsxs/vctuxs): truncate toward zero, clamp out-of-range values to
+  // the type's min/max, and flush NaN to 0.
   for (int i = 0; i < 4; i++) {
+    float f = other->constant.v128.f32[i];
     if (is_unsigned) {
-      constant.v128.u32[i] = (uint32_t)other->constant.v128.f32[i];
+      // Negatives and NaN clamp to 0; values >= 2^32 saturate to UINT32_MAX.
+      if (std::isnan(f) || f <= 0.0f) {
+        constant.v128.u32[i] = 0;
+      } else if (f >= 4294967296.0f) {
+        constant.v128.u32[i] = UINT32_MAX;
+      } else {
+        constant.v128.u32[i] = (uint32_t)f;
+      }
     } else {
-      constant.v128.i32[i] = (int32_t)other->constant.v128.f32[i];
+      // NaN flushes to 0; out-of-range values saturate to INT32_MIN/MAX.
+      if (std::isnan(f)) {
+        constant.v128.i32[i] = 0;
+      } else if (f >= 2147483648.0f) {
+        constant.v128.i32[i] = INT32_MAX;
+      } else if (f < -2147483648.0f) {
+        constant.v128.i32[i] = INT32_MIN;
+      } else {
+        constant.v128.i32[i] = (int32_t)f;
+      }
     }
   }
 }

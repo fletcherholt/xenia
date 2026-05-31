@@ -51,7 +51,49 @@ char* xe_strdup(const char* source) {
 }
 
 std::string to_utf8(const std::u16string_view source) {
-  return utfcpp::utf16to8(source);
+  try {
+    return utfcpp::utf16to8(source);
+  } catch (const utfcpp::exception&) {
+    // Guest-provided strings can contain invalid UTF-16 (e.g. unpaired
+    // surrogates), which would otherwise throw and take down callers such as
+    // kernel argument logging. Transcode leniently, substituting U+FFFD for
+    // anything malformed, so this conversion never throws. See issue #1780.
+    std::string result;
+    result.reserve(source.size());
+    auto emit = [&result](char32_t cp) {
+      if (cp <= 0x7F) {
+        result.push_back(static_cast<char>(cp));
+      } else if (cp <= 0x7FF) {
+        result.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+        result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+      } else if (cp <= 0xFFFF) {
+        result.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+        result.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+      } else {
+        result.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+        result.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+        result.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        result.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+      }
+    };
+    for (size_t i = 0; i < source.size();) {
+      char32_t cp = source[i++];
+      if (cp >= 0xD800 && cp <= 0xDBFF) {
+        // High surrogate: must be followed by a low surrogate.
+        if (i < source.size() && source[i] >= 0xDC00 && source[i] <= 0xDFFF) {
+          cp = 0x10000 + ((cp - 0xD800) << 10) + (source[i] - 0xDC00);
+          ++i;
+        } else {
+          cp = 0xFFFD;
+        }
+      } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
+        cp = 0xFFFD;  // unpaired low surrogate
+      }
+      emit(cp);
+    }
+    return result;
+  }
 }
 
 std::u16string to_utf16(const std::string_view source) {
