@@ -32,6 +32,15 @@ using xe::cpu::hir::HIRBuilder;
 using xe::cpu::hir::TypeName;
 using xe::cpu::hir::Value;
 
+// Floating-point results depend on the guest's FPSCR rounding and
+// flush-to-zero modes, which aren't known at translation time. Folding such
+// ops here would bake in the host's default mode and can produce a different
+// bit pattern than the runtime would compute, so only integer operands are
+// folded for rounding-sensitive opcodes. See issue #1720.
+static bool IsIntegerArithmeticType(TypeName type) {
+  return type <= INT64_TYPE;
+}
+
 ConstantPropagationPass::ConstantPropagationPass()
     : ConditionalGroupSubpass() {}
 
@@ -447,7 +456,8 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
           break;
 
         case OPCODE_ADD:
-          if (i->src1.value->IsConstant() && i->src2.value->IsConstant()) {
+          if (i->src1.value->IsConstant() && i->src2.value->IsConstant() &&
+              IsIntegerArithmeticType(v->type)) {
             v->set_from(i->src1.value);
             v->Add(i->src2.value);
             i->Remove();
@@ -476,7 +486,8 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
           }
           break;
         case OPCODE_SUB:
-          if (i->src1.value->IsConstant() && i->src2.value->IsConstant()) {
+          if (i->src1.value->IsConstant() && i->src2.value->IsConstant() &&
+              IsIntegerArithmeticType(v->type)) {
             v->set_from(i->src1.value);
             v->Sub(i->src2.value);
             i->Remove();
@@ -484,7 +495,8 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
           }
           break;
         case OPCODE_MUL:
-          if (i->src1.value->IsConstant() && i->src2.value->IsConstant()) {
+          if (i->src1.value->IsConstant() && i->src2.value->IsConstant() &&
+              IsIntegerArithmeticType(v->type)) {
             v->set_from(i->src1.value);
             v->Mul(i->src2.value);
             i->Remove();
@@ -523,7 +535,8 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
           }
           break;
         case OPCODE_DIV:
-          if (i->src1.value->IsConstant() && i->src2.value->IsConstant()) {
+          if (i->src1.value->IsConstant() && i->src2.value->IsConstant() &&
+              IsIntegerArithmeticType(v->type)) {
             v->set_from(i->src1.value);
             v->Div(i->src2.value, (i->flags & ARITHMETIC_UNSIGNED) != 0);
             i->Remove();
@@ -548,7 +561,8 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
           }
           break;
         case OPCODE_MUL_ADD:
-          if (i->src1.value->IsConstant() && i->src2.value->IsConstant()) {
+          if (i->src1.value->IsConstant() && i->src2.value->IsConstant() &&
+              IsIntegerArithmeticType(v->type)) {
             if (i->src3.value->IsConstant()) {
               v->set_from(i->src1.value);
               Value::MulAdd(v, i->src1.value, i->src2.value, i->src3.value);
@@ -570,7 +584,8 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
           }
           break;
         case OPCODE_MUL_SUB:
-          if (i->src1.value->IsConstant() && i->src2.value->IsConstant()) {
+          if (i->src1.value->IsConstant() && i->src2.value->IsConstant() &&
+              IsIntegerArithmeticType(v->type)) {
             // Multiply part is constant.
             if (i->src3.value->IsConstant()) {
               v->set_from(i->src1.value);
@@ -617,7 +632,7 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
           }
           break;
         case OPCODE_SQRT:
-          if (i->src1.value->IsConstant()) {
+          if (i->src1.value->IsConstant() && IsIntegerArithmeticType(v->type)) {
             v->set_from(i->src1.value);
             v->Sqrt();
             i->Remove();
@@ -625,7 +640,7 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
           }
           break;
         case OPCODE_RSQRT:
-          if (i->src1.value->IsConstant()) {
+          if (i->src1.value->IsConstant() && IsIntegerArithmeticType(v->type)) {
             v->set_from(i->src1.value);
             v->RSqrt();
             i->Remove();
@@ -633,7 +648,7 @@ bool ConstantPropagationPass::Run(HIRBuilder* builder, bool& result) {
           }
           break;
         case OPCODE_RECIP:
-          if (i->src1.value->IsConstant()) {
+          if (i->src1.value->IsConstant() && IsIntegerArithmeticType(v->type)) {
             v->set_from(i->src1.value);
             v->Recip();
             i->Remove();
